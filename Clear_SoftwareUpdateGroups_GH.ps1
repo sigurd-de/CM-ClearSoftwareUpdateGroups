@@ -3,14 +3,14 @@
 Script to delete Software Update Groups that reached the deadline
 
 .DESCRIPTION
-Script to clear Software Update Groups created by active Automatic Deployment Rules.
+Script to clear Software Update Groups created by active Automatic Deployment Groups.
 For new machines or machines not connected for long time the newest SUG with an already reached deadline
-will be kept, so machines are forced to install the updates.
+will be kept,so machines are forced to install the updates.
 A log-file ClearSUG_%DATE%.log is created in LogFolder
 
 .PARAMETER CMSiteCode
 Configuration Manager site code [mandatory]
-.PARAMETER CMProviderMachineName
+.PARAMETER CMProviderMachineName [mandatory]
 Machine name of Configuration Manager SMSProvider to be used by the script [mandatory]
 
 .Notes
@@ -108,24 +108,31 @@ foreach ($ADRItem in $ADRs) {
     
       # Find all deployments for a SUG
       $SUGDeployments = Get-CMDeployment -FeatureType SoftwareUpdate -SoftwareName $SUGItem.LocalizedDisplayName
-      foreach ($SUGDItem in $SUGDeployments) {
-        #Search for the deadlines of a SUG deployment
-        if (!$DeadLineMax) {
-          [datetime]$DeadLineMax = $SUGDItem.EnforcementDeadline
-        }
-        elseif ($SUGDItem.EnforcementDeadline -gt $DeadLineMax) {
-          #Keep the greatest (latest) deadline of a SUG deployment
-          [datetime]$DeadLineMax = $SUGDItem.EnforcementDeadline
+      if ($SUGDeployments) {
+        foreach ($SUGDItem in $SUGDeployments) {
+          #Search for the deadlines of a SUG deployment
+          if (!$DeadLineMax) {
+            [datetime]$DeadLineMax = $SUGDItem.EnforcementDeadline
+          }
+          elseif ($SUGDItem.EnforcementDeadline -gt $DeadLineMax) {
+            #Keep the greatest (latest) deadline of a SUG deployment
+            [datetime]$DeadLineMax = $SUGDItem.EnforcementDeadline
+          }
+        }  
+
+        # Add to list
+        if ($DeadLineMax) {
+          $LogPrint = $SUGDItem.ApplicationName
+          # A list of all greatest (latest) deadlines of all deployments of all SUGs of a specific ADR 
+          Add-Content -LiteralPath $LogPath -Value "$(Get-Date -Format o) Max deadline of SUG = $LogPrint is $DeadLineMax"
+          $SUGDDeadlineList.Add($SUGDItem.ApplicationName, $DeadLineMax)
+          Remove-Variable DeadLineMax
         }
       }
-      
-      # Add to list
-      if ($DeadLineMax) {
-        $LogPrint = $SUGDItem.ApplicationName
-        # A list of all greatest (latest) deadlines of all deployments of all SUGs of a specific ADR 
-        Add-Content -LiteralPath $LogPath -Value "$(Get-Date -Format o) Max deadline of SUG = $LogPrint is $DeadLineMax"
-        $SUGDDeadlineList.Add($SUGDItem.ApplicationName, $DeadLineMax)
-        Remove-Variable DeadLineMax
+      else {
+        $LogPrint = $SUGItem.LocalizedDisplayName
+        Add-Content -LiteralPath $LogPath -Value "$(Get-Date -Format o) To be deleted = $LogPrint"
+        Remove-CMSoftwareUpdateGroup -Name $SUGItem.LocalizedDisplayName -Force 
       }
     }
     
